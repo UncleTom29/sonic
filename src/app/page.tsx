@@ -3,7 +3,6 @@
 
 import { PrivyProvider } from '@/app/providers/PrivyProvider';
 import { FirebaseProvider } from '@/app/providers/FirebaseProvider';
-// import { AIProvider } from '@/app/providers/AIProvider';
 import { Header } from '@/components/chat/Header';
 import { ChatMessages } from '@/components/chat/ChatMessages';
 import { ChatInput } from '@/components/chat/ChatInput';
