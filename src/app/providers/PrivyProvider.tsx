@@ -18,9 +18,8 @@ export function PrivyProvider({ children }: PrivyProviderProps) {
         appearance: {
           theme: 'light',
           accentColor: '#6366f1',
-          logo: 'https://your.logo.url',
-          landingHeader: 'Your custom header text',
-          loginMessage: 'Your custom header text', 
+          landingHeader: 'Welcome to Sonic Hub',
+          loginMessage: 'Login to Sonic Hub', 
           showWalletLoginFirst: true, 
           walletChainType: 'solana-only',
         },

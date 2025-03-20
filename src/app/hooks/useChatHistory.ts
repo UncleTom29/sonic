@@ -1,21 +1,30 @@
+// src/app/hooks/useChatHistory.ts
 import { useEffect, useState, useCallback } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
-import { collection, doc, getDocs, setDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, getDocs, setDoc, serverTimestamp, DocumentData } from 'firebase/firestore';
 import { db } from '@/app/lib/firebase/client';
 import { Message } from 'ai';
 
 interface ChatHistory {
   id: string;
   messages: Message[];
-  createdAt: Date;
+  createdAt: Date | DocumentData;
 }
 
 export function useChatHistory() {
-  const { user } = usePrivy();
+  const { user, authenticated } = usePrivy();
   const [chats, setChats] = useState<ChatHistory[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const loadChatHistory = useCallback(async () => {
-    if (!user?.id) return;
+    if (!authenticated || !user?.id) {
+      setChats([]);
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
 
     try {
       const querySnapshot = await getDocs(
@@ -28,20 +37,33 @@ export function useChatHistory() {
       setChats(loadedChats);
     } catch (error) {
       console.error('Error loading chats:', error);
+      setError('Failed to load chat history');
+      setChats([]);
+    } finally {
+      setIsLoading(false);
     }
-  }, [user?.id]);
+  }, [user?.id, authenticated]);
 
   useEffect(() => {
     loadChatHistory();
   }, [loadChatHistory]);
 
   const saveChat = async (messages: Message[]) => {
-    if (!user?.id) return;
+    if (!authenticated || !user?.id || !messages || messages.length === 0) {
+      return;
+    }
 
     try {
+      // Sanitize messages to avoid undefined values
+      const sanitizedMessages = messages.map(msg => ({
+        id: msg.id || Date.now().toString(),
+        content: msg.content || '',
+        role: msg.role || 'user'
+      }));
+      
       const chatRef = doc(collection(db, 'users', user.id, 'chats'));
       await setDoc(chatRef, {
-        messages,
+        messages: sanitizedMessages,
         createdAt: serverTimestamp()
       });
       await loadChatHistory();
@@ -50,5 +72,5 @@ export function useChatHistory() {
     }
   };
 
-  return { saveChat, chats, loadChatHistory };
+  return { saveChat, chats, loadChatHistory, isLoading, error };
 }

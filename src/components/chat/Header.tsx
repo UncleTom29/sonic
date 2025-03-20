@@ -8,7 +8,7 @@ export const Header = () => {
     <header className="flex items-center justify-between p-4 border-b bg-white">
       <div className="flex items-center gap-2">
         <Logo />
-        <h1 className="text-xl font-semibold">Wallet Assistant</h1>
+        <h1 className="text-xl font-semibold">Sonic Hub</h1>
       </div>
       
       {authenticated ? (

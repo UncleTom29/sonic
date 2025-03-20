@@ -1,12 +1,13 @@
+// src/components/chat/ChatMessages.tsx
 'use client';
 
-import { useUIState } from 'ai/rsc';
 import { useEffect, useRef } from 'react';
 import { useBlockchain } from '@/app/hooks/useBlockchain';
-import { Message } from 'ai';
+import { useAI } from '@/app/providers/AIProvider';
+import { ExtendedMessage } from '@/app/types/message';
 
 export const ChatMessages = () => {
-  const [messages] = useUIState<Message[]>();
+  const { messages } = useAI();
   const { getBalance, getTransactions } = useBlockchain();
   const endRef = useRef<HTMLDivElement>(null);
 
@@ -32,7 +33,7 @@ export const ChatMessages = () => {
 
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-4">
-      {messages?.map((message: Message) => (
+      {messages?.map((message: ExtendedMessage) => (
         <div
           key={message.id}
           className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
