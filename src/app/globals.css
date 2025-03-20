@@ -28,6 +28,32 @@ body {
     --color-primary: 99 102 241;
     --color-secondary: 139 92 246;
   }
+  
+  /* Light mode variables */
+  .light {
+    --background: #ffffff;
+    --foreground: #171717;
+    --card-bg: #ffffff;
+    --sidebar-bg: #f9fafb;
+    --sidebar-border: #e5e7eb;
+    --sidebar-text: #4b5563;
+    --sidebar-hover: #e5e7eb;
+    --input-border: #d1d5db;
+    --input-bg: #ffffff;
+  }
+  
+  /* Dark mode variables */
+  .dark {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+    --card-bg: #1f2937;
+    --sidebar-bg: #111827;
+    --sidebar-border: #374151;
+    --sidebar-text: #9ca3af;
+    --sidebar-hover: #374151;
+    --input-border: #4b5563;
+    --input-bg: #1f2937;
+  }
 }
 
 /* Gradient transition animations */

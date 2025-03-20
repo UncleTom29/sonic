@@ -1,7 +1,7 @@
 // src/app/hooks/useChatHistory.ts
 import { useEffect, useState, useCallback } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
-import { collection, doc, getDocs, setDoc, serverTimestamp, DocumentData, orderBy, query } from 'firebase/firestore';
+import { collection, doc, getDocs, setDoc, deleteDoc, serverTimestamp, DocumentData, orderBy, query } from 'firebase/firestore';
 import { db } from '@/app/lib/firebase/client';
 import { ExtendedMessage } from '@/app/types/message';
 
@@ -77,5 +77,22 @@ export function useChatHistory() {
     }
   };
 
-  return { saveChat, chats, loadChatHistory, isLoading, error };
+  const deleteChat = async (chatId: string) => {
+    if (!authenticated || !user?.id) {
+      return;
+    }
+    
+    try {
+      const chatRef = doc(db, 'users', user.id, 'chats', chatId);
+      await deleteDoc(chatRef);
+      
+      // Update local state to reflect the deletion
+      setChats(prevChats => prevChats.filter(chat => chat.id !== chatId));
+    } catch (error) {
+      console.error('Error deleting chat:', error);
+      setError('Failed to delete chat');
+    }
+  };
+
+  return { saveChat, deleteChat, chats, loadChatHistory, isLoading, error };
 }

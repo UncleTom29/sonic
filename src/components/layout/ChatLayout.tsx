@@ -12,7 +12,7 @@ export function ChatLayout({ children }: { children: React.ReactNode }) {
   const [activeSection, setActiveSection] = useState<'chats' | 'account' | 'portfolio'>('chats');
   const { setMessages, clearMessages } = useAI();
   const { user, logout } = usePrivy();
-  const { chats } = useChatHistory();
+  const { chats, deleteChat } = useChatHistory();
   const [isDarkMode, setIsDarkMode] = useState(false);
 
   // Check system preference and localStorage on mount
@@ -59,6 +59,11 @@ export function ChatLayout({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const handleDeleteChat = (e: React.MouseEvent, chatId: string) => {
+    e.stopPropagation(); // Prevent loading the chat when clicking delete
+    deleteChat(chatId);
+  };
+
   const truncateText = (text: string, maxLength: number) => {
     if (!text) return "New conversation";
     return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
@@ -91,7 +96,7 @@ export function ChatLayout({ children }: { children: React.ReactNode }) {
       <div 
         className={`${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        } lg:translate-x-0 fixed lg:static inset-y-0 left-0 w-64 transform transition-transform duration-300 ease-in-out z-30 flex flex-col bg-gray-900 text-white shadow-xl`}
+        } lg:translate-x-0 fixed lg:static inset-y-0 left-0 w-64 transform transition-transform duration-300 ease-in-out z-30 flex flex-col bg-gray-900 dark:bg-gray-900 text-white shadow-xl`}
       >
         {/* Logo area */}
         <div className="p-4 border-b border-gray-800 flex items-center justify-between">
@@ -138,18 +143,26 @@ export function ChatLayout({ children }: { children: React.ReactNode }) {
               
               <div className="mt-4 space-y-1">
                 {chats?.map((chat) => (
-                  <button
-                    key={chat.id}
-                    className="w-full p-2 flex items-center space-x-2 hover:bg-gray-800 rounded-lg transition-colors text-left"
-                    onClick={() => loadChat(chat.messages as ExtendedMessage[])}
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                    <span className="truncate text-sm">
-                      {chat.messages && chat.messages.length > 0
-                        ? truncateText(chat.messages[0].content, 20)
-                        : "New conversation"}
-                    </span>
-                  </button>
+                  <div key={chat.id} className="group relative">
+                    <button
+                      className="w-full p-2 flex items-center space-x-2 hover:bg-gray-800 rounded-lg transition-colors text-left"
+                      onClick={() => loadChat(chat.messages as ExtendedMessage[])}
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                      <span className="truncate text-sm flex-1">
+                        {chat.messages && chat.messages.length > 0
+                          ? truncateText(chat.messages[0].content, 20)
+                          : "New conversation"}
+                      </span>
+                      <button
+                        onClick={(e) => handleDeleteChat(e, chat.id)}
+                        className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-opacity p-1"
+                        aria-label="Delete chat"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                      </button>
+                    </button>
+                  </div>
                 ))}
               </div>
             </div>

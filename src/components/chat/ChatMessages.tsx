@@ -15,8 +15,6 @@ export const ChatMessages = () => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  
-
   const executeAction = async (action: string) => {
     try {
       switch (action) {
@@ -54,7 +52,7 @@ export const ChatMessages = () => {
             <div className={`max-w-xl p-4 rounded-2xl ${
               message.role === 'user' 
                 ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md' 
-                : 'bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 shadow-md dark:text-gray-100'
+                : 'bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 shadow-md text-gray-800 dark:text-gray-100'
             }`}>
               <p className="whitespace-pre-wrap">{message.content}</p>
               {message.action && (
