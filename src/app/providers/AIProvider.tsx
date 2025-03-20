@@ -27,11 +27,11 @@ export function AIProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (user?.id && chats && chats.length > 0) {
       // Sort by createdAt in descending order and get the most recent chat
-      const sortedChats = [...chats].sort((a, b) => {
-        const dateA = a.createdAt instanceof Date ? a.createdAt : new Date(a.createdAt as unknown as string | number);
-        const dateB = b.createdAt instanceof Date ? b.createdAt : new Date(a.createdAt as unknown as string | number);
-        return dateB.getTime() - dateA.getTime();
-      });
+const sortedChats = [...chats].sort((a, b) => {
+  const dateA = a.createdAt instanceof Date ? a.createdAt : new Date(a.createdAt?.toDate?.() || a.createdAt);
+  const dateB = b.createdAt instanceof Date ? b.createdAt : new Date(b.createdAt?.toDate?.() || b.createdAt);
+  return dateB.getTime() - dateA.getTime();
+});
       
       if (sortedChats[0]?.messages) {
         setMessages(sortedChats[0].messages as ExtendedMessage[]);

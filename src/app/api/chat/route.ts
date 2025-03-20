@@ -69,19 +69,23 @@ export async function POST(req: Request) {
       // Continue with the response even if Firestore fails
     }
 
-    const stream = new ReadableStream({
-      async start(controller) {
-        const encoder = new TextEncoder();
-        for await (const partialObject of partialObjectStream) {
-          controller.enqueue(encoder.encode(JSON.stringify(partialObject)));
-        }
-        controller.close();
+   // In src/app/api/chat/route.ts
+const stream = new ReadableStream({
+    async start(controller) {
+      const encoder = new TextEncoder();
+      
+      // Send properly formatted JSON stream (JSON Lines format)
+      for await (const partialObject of partialObjectStream) {
+        // Add a newline between JSON objects to properly separate them
+        controller.enqueue(encoder.encode(JSON.stringify(partialObject) + '\n'));
       }
-    });
-
-    return new Response(stream, {
-      headers: { 'Content-Type': 'application/json' }
-    });
+      controller.close();
+    }
+  });
+  
+  return new Response(stream, {
+    headers: { 'Content-Type': 'application/x-ndjson' } // Use correct content type for newline-delimited JSON
+  });
 
   } catch (error) {
     console.error('AI processing error:', error);
