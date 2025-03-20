@@ -5,7 +5,6 @@ import { useState, useRef } from 'react';
 import { useChatHistory } from '@/app/hooks/useChatHistory';
 import { ModelSelector } from './ModelSelector';
 import { useAI } from '@/app/providers/AIProvider';
-import { Message } from 'ai';
 import { ExtendedMessage } from '@/app/types/message';
 import { usePrivy } from '@privy-io/react-auth';
 
@@ -32,7 +31,11 @@ export function ChatInput() {
       role: 'user',
     };
 
-    setMessages((current: Message[]) => [...current, userMessage]);
+    // Clear input immediately for better UX
+    setInput('');
+    
+    // Add user message to messages
+    setMessages((current: ExtendedMessage[]) => [...current, userMessage]);
     setIsLoading(true);
     
     try {
@@ -54,52 +57,62 @@ export function ChatInput() {
       
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
-      let result = '';
+      let buffer = '';
       
       if (reader) {
+        const aiMessage: ExtendedMessage = {
+          id: (Date.now() + 1).toString(),
+          content: "I'm processing your request...",
+          role: 'assistant',
+        };
+        
+        // Add initial AI message to show loading state
+        setMessages((current) => [...current, aiMessage]);
+        
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
           
-          result += decoder.decode(value, { stream: true });
+          buffer += decoder.decode(value, { stream: true });
           
-          try {
-            const data = JSON.parse(result);
-            
-            const aiMessage: ExtendedMessage = {
-              id: (Date.now() + 1).toString(),
-              content: data.content || "I'm processing your request",
-              role: 'assistant',
-              action: data.action
-            };
-            
-            setMessages((current: Message[]) => {
-              const filtered = current.filter(msg => msg.role !== 'assistant' || msg.id !== aiMessage.id);
-              return [...filtered, aiMessage];
-            });
-          } catch (e) {
-           console.log(e) // Incomplete JSON, continue reading
+          // Process complete lines from the buffer
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || ''; // Keep the last incomplete line in buffer
+          
+          for (const line of lines) {
+            if (line.trim()) {
+              try {
+                const data = JSON.parse(line);
+                
+                // Update the AI message with the latest content
+                setMessages((current: ExtendedMessage[]) => {
+                  const updatedMessages = [...current];
+                  const lastMessage = updatedMessages[updatedMessages.length - 1];
+                  
+                  if (lastMessage.role === 'assistant') {
+                    updatedMessages[updatedMessages.length - 1] = {
+                      ...lastMessage,
+                      content: data.content || lastMessage.content,
+                      action: data.action
+                    };
+                  }
+                  
+                  return updatedMessages;
+                });
+              } catch (e) {
+                console.log('Error parsing JSON:', e);
+              }
+            }
           }
         }
-      } else {
-        // Fallback for non-streaming response
-        const data = await response.json();
-        
-        const aiMessage: ExtendedMessage = {
-          id: (Date.now() + 1).toString(),
-          content: data.content || "I'm processing your request",
-          role: 'assistant',
-          action: data.action
-        };
-        
-        setMessages((current: Message[]) => [...current, aiMessage]);
       }
       
+      // Save the chat after completion
       await saveChat([...messages, userMessage]);
     } catch (error) {
       console.error('Submission error:', error);
       // Add error message to the chat
-      setMessages((current: Message[]) => [
+      setMessages((current: ExtendedMessage[]) => [
         ...current,
         {
           id: (Date.now() + 1).toString(),
@@ -109,7 +122,6 @@ export function ChatInput() {
       ]);
     } finally {
       setIsLoading(false);
-      setInput('');
       formRef.current?.reset();
     }
   };

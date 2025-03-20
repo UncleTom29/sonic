@@ -59,33 +59,36 @@ export async function POST(req: Request) {
       const app = getFirebaseApp();
       const db = getFirestore(app);
       
-      const chatRef = doc(collection(db, 'users', userId, 'chats'));
-      await setDoc(chatRef, {
-        messages,
-        createdAt: serverTimestamp()
-      });
+      // Check if the latest message is from the user to avoid duplicates
+      const latestMessage = messages[messages.length - 1];
+      if (latestMessage && latestMessage.role === 'user') {
+        const chatRef = doc(collection(db, 'users', userId, 'chats'));
+        await setDoc(chatRef, {
+          messages,
+          createdAt: serverTimestamp()
+        });
+      }
     } catch (firestoreError) {
       console.error('Firestore error:', firestoreError);
       // Continue with the response even if Firestore fails
     }
 
-   // In src/app/api/chat/route.ts
-const stream = new ReadableStream({
-    async start(controller) {
-      const encoder = new TextEncoder();
-      
-      // Send properly formatted JSON stream (JSON Lines format)
-      for await (const partialObject of partialObjectStream) {
-        // Add a newline between JSON objects to properly separate them
-        controller.enqueue(encoder.encode(JSON.stringify(partialObject) + '\n'));
+    // Create a proper JSON Lines stream
+    const stream = new ReadableStream({
+      async start(controller) {
+        const encoder = new TextEncoder();
+        
+        for await (const partialObject of partialObjectStream) {
+          // Send proper JSON Lines format with newlines
+          controller.enqueue(encoder.encode(JSON.stringify(partialObject) + '\n'));
+        }
+        controller.close();
       }
-      controller.close();
-    }
-  });
-  
-  return new Response(stream, {
-    headers: { 'Content-Type': 'application/x-ndjson' } // Use correct content type for newline-delimited JSON
-  });
+    });
+    
+    return new Response(stream, {
+      headers: { 'Content-Type': 'application/x-ndjson' }
+    });
 
   } catch (error) {
     console.error('AI processing error:', error);

@@ -15,6 +15,8 @@ export const ChatMessages = () => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  
+
   const executeAction = async (action: string) => {
     try {
       switch (action) {

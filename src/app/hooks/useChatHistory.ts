@@ -1,13 +1,13 @@
 // src/app/hooks/useChatHistory.ts
 import { useEffect, useState, useCallback } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
-import { collection, doc, getDocs, setDoc, serverTimestamp, DocumentData } from 'firebase/firestore';
+import { collection, doc, getDocs, setDoc, serverTimestamp, DocumentData, orderBy, query } from 'firebase/firestore';
 import { db } from '@/app/lib/firebase/client';
-import { Message } from 'ai';
+import { ExtendedMessage } from '@/app/types/message';
 
 interface ChatHistory {
   id: string;
-  messages: Message[];
+  messages: ExtendedMessage[];
   createdAt: Date | DocumentData;
 }
 
@@ -27,13 +27,15 @@ export function useChatHistory() {
     setError(null);
 
     try {
-      const querySnapshot = await getDocs(
-        collection(db, 'users', user.id, 'chats')
-      );
+      const chatsRef = collection(db, 'users', user.id, 'chats');
+      const chatsQuery = query(chatsRef, orderBy('createdAt', 'desc'));
+      const querySnapshot = await getDocs(chatsQuery);
+      
       const loadedChats = querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       })) as ChatHistory[];
+      
       setChats(loadedChats);
     } catch (error) {
       console.error('Error loading chats:', error);
@@ -48,7 +50,7 @@ export function useChatHistory() {
     loadChatHistory();
   }, [loadChatHistory]);
 
-  const saveChat = async (messages: Message[]) => {
+  const saveChat = async (messages: ExtendedMessage[]) => {
     if (!authenticated || !user?.id || !messages || messages.length === 0) {
       return;
     }
@@ -58,7 +60,8 @@ export function useChatHistory() {
       const sanitizedMessages = messages.map(msg => ({
         id: msg.id || Date.now().toString(),
         content: msg.content || '',
-        role: msg.role || 'user'
+        role: msg.role || 'user',
+        action: msg.action
       }));
       
       const chatRef = doc(collection(db, 'users', user.id, 'chats'));
@@ -66,7 +69,9 @@ export function useChatHistory() {
         messages: sanitizedMessages,
         createdAt: serverTimestamp()
       });
-      await loadChatHistory();
+      
+      // Don't call loadChatHistory here to prevent duplicates
+      // Let the component that needs fresh data call it
     } catch (error) {
       console.error('Error saving chat:', error);
     }

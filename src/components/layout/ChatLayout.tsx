@@ -5,30 +5,58 @@ import { useAI } from '@/app/providers/AIProvider';
 import { usePrivy } from '@privy-io/react-auth';
 import { useChatHistory } from '@/app/hooks/useChatHistory';
 import { DarkModeToggle } from '@/components/ui/DarkModeToggle';
+import { ExtendedMessage } from '@/app/types/message';
 
 export function ChatLayout({ children }: { children: React.ReactNode }) {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false); // Start closed on mobile
   const [activeSection, setActiveSection] = useState<'chats' | 'account' | 'portfolio'>('chats');
-  const { clearMessages } = useAI();
+  const { setMessages, clearMessages } = useAI();
   const { user, logout } = usePrivy();
   const { chats } = useChatHistory();
   const [isDarkMode, setIsDarkMode] = useState(false);
 
+  // Check system preference and localStorage on mount
   useEffect(() => {
-    // Check system preference for dark mode
-    if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      setIsDarkMode(true);
+    const savedMode = localStorage.getItem('darkMode');
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    
+    // Use saved preference if available, otherwise use system preference
+    const shouldUseDarkMode = savedMode ? savedMode === 'true' : prefersDark;
+    
+    setIsDarkMode(shouldUseDarkMode);
+    if (shouldUseDarkMode) {
       document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
     }
   }, []);
 
   const toggleDarkMode = () => {
-    setIsDarkMode(!isDarkMode);
-    document.documentElement.classList.toggle('dark');
+    const newMode = !isDarkMode;
+    setIsDarkMode(newMode);
+    localStorage.setItem('darkMode', String(newMode));
+    
+    if (newMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
   };
 
   const startNewChat = () => {
     clearMessages();
+    // Close sidebar on mobile after selecting a chat
+    if (window.innerWidth < 1024) {
+      setSidebarOpen(false);
+    }
+  };
+
+  const loadChat = (chatMessages: ExtendedMessage[]) => {
+    setMessages(chatMessages);
+    // Close sidebar on mobile after selecting a chat
+    if (window.innerWidth < 1024) {
+      setSidebarOpen(false);
+    }
   };
 
   const truncateText = (text: string, maxLength: number) => {
@@ -38,20 +66,33 @@ export function ChatLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className={`flex h-screen ${isDarkMode ? 'dark' : ''}`}>
+      {/* Overlay for mobile - close sidebar when clicking outside */}
+      {sidebarOpen && (
+        <div 
+          className="lg:hidden fixed inset-0 bg-black bg-opacity-50 z-20"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       {/* Mobile sidebar toggle */}
       <button
-        className="lg:hidden absolute top-4 left-4 z-50 p-2 rounded-full bg-indigo-600 text-white"
+        className="lg:hidden fixed top-4 left-4 z-50 p-2 rounded-full bg-indigo-600 text-white shadow-lg"
         onClick={() => setSidebarOpen(!sidebarOpen)}
+        aria-label="Toggle sidebar"
       >
         {sidebarOpen ? (
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
         ) : (
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
         )}
       </button>
 
       {/* Sidebar */}
-      <div className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 fixed lg:static inset-y-0 left-0 w-64 transition-transform duration-300 ease-in-out z-30 flex flex-col bg-gray-900 text-white`}>
+      <div 
+        className={`${
+          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        } lg:translate-x-0 fixed lg:static inset-y-0 left-0 w-64 transform transition-transform duration-300 ease-in-out z-30 flex flex-col bg-gray-900 text-white shadow-xl`}
+      >
         {/* Logo area */}
         <div className="p-4 border-b border-gray-800 flex items-center justify-between">
           <div className="flex items-center space-x-2">
@@ -100,9 +141,7 @@ export function ChatLayout({ children }: { children: React.ReactNode }) {
                   <button
                     key={chat.id}
                     className="w-full p-2 flex items-center space-x-2 hover:bg-gray-800 rounded-lg transition-colors text-left"
-                    onClick={() => {
-                      // Logic to load selected chat
-                    }}
+                    onClick={() => loadChat(chat.messages as ExtendedMessage[])}
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                     <span className="truncate text-sm">
