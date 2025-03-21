@@ -1,11 +1,12 @@
 // src/components/layout/ChatLayout.tsx
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Logo } from '@/components/ui/Logo';
 import { useAI } from '@/app/providers/AIProvider';
 import { usePrivy } from '@privy-io/react-auth';
 import { useChatHistory } from '@/app/hooks/useChatHistory';
 import { DarkModeToggle } from '@/components/ui/DarkModeToggle';
 import { ExtendedMessage } from '@/app/types/message';
+import { useBlockchain } from '@/app/hooks/useBlockchain';
 
 export function ChatLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false); // Start closed on mobile
@@ -14,6 +15,14 @@ export function ChatLayout({ children }: { children: React.ReactNode }) {
   const { user, login, logout } = usePrivy();
   const { chats, deleteChat } = useChatHistory();
   const [isDarkMode, setIsDarkMode] = useState(false);
+  
+  // Portfolio state
+  const { getBalance, getTransactions } = useBlockchain();
+  const [balance, setBalance] = useState<number | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [portfolioLoading, setPortfolioLoading] = useState(false);
+  const [portfolioError, setPortfolioError] = useState<string | null>(null);
 
   // Check system preference and localStorage on mount
   useEffect(() => {
@@ -30,6 +39,34 @@ export function ChatLayout({ children }: { children: React.ReactNode }) {
       document.documentElement.classList.remove('dark');
     }
   }, []);
+
+  useEffect(() => {
+    const loadPortfolioData = async () => {
+      if (activeSection === 'portfolio' && user?.wallet?.address) {
+        setPortfolioLoading(true);
+        setPortfolioError(null);
+        
+        try {
+          // Get balance
+          const balanceData = await getBalance();
+          setBalance(typeof balanceData === 'number' ? balanceData : null);
+          
+          // Get transactions
+          const txData = await getTransactions(5); // Limit to 5 recent transactions
+          setTransactions(Array.isArray(txData) ? txData : []);
+        } catch (err) {
+          console.error('Portfolio data loading error:', err);
+          setPortfolioError('Failed to load portfolio data');
+        } finally {
+          setPortfolioLoading(false);
+        }
+      }
+    };
+    
+    loadPortfolioData();
+    // Only reload when section changes or user changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSection, user?.wallet?.address]);
 
   const toggleDarkMode = () => {
     const newMode = !isDarkMode;
@@ -68,6 +105,68 @@ export function ChatLayout({ children }: { children: React.ReactNode }) {
     if (!text) return "New conversation";
     return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
   };
+  
+  // Format timestamp to readable date
+ // Format timestamp to readable date
+ const formatDate = (timestamp: number | undefined) => {
+  if (!timestamp) return 'Unknown date';
+  return new Date(timestamp * 1000).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+};
+
+// Format transaction type to be more readable
+const formatTransactionType = (type: string) => {
+  if (!type) return 'Transaction';
+  
+  // Convert snake_case or camelCase to Title Case with spaces
+  return type
+    .replace(/_/g, ' ')
+    .replace(/([A-Z])/g, ' $1')
+    .replace(/^\w/, c => c.toUpperCase());
+};
+// Replace the refreshPortfolio function in ChatLayout.tsx with this:
+const [isRefreshing, setIsRefreshing] = useState(false);
+
+// Add this useRef at the top of your component
+const lastRefreshTimeRef = useRef<number>(0);
+
+const refreshPortfolio = async () => {
+  if (!user?.wallet?.address) return;
+  
+  // Check if we're already refreshing
+  if (isRefreshing) return;
+  
+  // Check if we've refreshed too recently (5 seconds cooldown)
+  const now = Date.now();
+  if (now - lastRefreshTimeRef.current < 5000) {
+    setPortfolioError("Please wait a moment before refreshing again");
+    return;
+  }
+  
+  setIsRefreshing(true);
+  setPortfolioLoading(true);
+  setPortfolioError(null);
+  lastRefreshTimeRef.current = now;
+  
+  try {
+    const balanceData = await getBalance();
+    setBalance(typeof balanceData === 'number' ? balanceData : null);
+    
+    const txData = await getTransactions(5);
+    setTransactions(Array.isArray(txData) ? txData : []);
+  } catch (err) {
+    console.error('Portfolio refresh error:', err);
+    setPortfolioError('Failed to refresh portfolio data. Wait for 10 seconds and try again');
+  } finally {
+    setPortfolioLoading(false);
+    setIsRefreshing(false);
+  }
+};
 
   return (
     <div className={`flex h-screen ${isDarkMode ? 'dark' : ''}`}>
@@ -194,24 +293,127 @@ export function ChatLayout({ children }: { children: React.ReactNode }) {
           )}
 
           {activeSection === 'portfolio' && (
-            <div className="p-4">
+            <div className="p-4 space-y-4">
               {user ? (
-                <div className="space-y-4">
-                  <div className="p-3 bg-gray-800 rounded-lg">
-                    <div className="text-xs text-gray-400">SOL Balance</div>
-                    <div className="text-xl font-semibold flex items-center">
-                      <span className="mr-2">Loading...</span>
-                      <span className="text-sm text-gray-400">SOL</span>
-                    </div>
+                <>
+                  {/* Refresh Button */}
+                  <div className="flex justify-end">
+                    <button
+                      onClick={refreshPortfolio}
+                      disabled={portfolioLoading}
+                      className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center space-x-1 disabled:opacity-50"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={portfolioLoading ? "animate-spin" : ""}>
+                        <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+                      </svg>
+                      <span>{portfolioLoading ? "Refreshing..." : "Refresh"}</span>
+                    </button>
                   </div>
+                  
+                  {/* SOL Balance Card */}
+               {/* SOL Balance Card */}
+<div className="p-3 bg-gray-800 rounded-lg">
+  <div className="text-xs text-gray-400">SOL Balance</div>
+  <div className="text-xl font-semibold flex items-center mt-1">
+    {portfolioLoading ? (
+      <div className="flex items-center">
+        <svg className="animate-spin h-4 w-4 text-white mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        <span>Loading...</span>
+      </div>
+    ) : portfolioError ? (
+      <span className="text-red-400 text-sm">{portfolioError}</span>
+    ) : balance !== null ? (
+      <>
+        <span className="mr-2">{typeof balance === 'number' ? balance.toFixed(3) : '0.000000'}</span>
+        <span className="text-sm text-gray-400">SOL</span>
+      </>
+    ) : (
+      <span className="text-sm text-gray-400">No balance data available</span>
+    )}
+  </div>
+</div>
+                  
+                  {/* Recent Transactions Card */}
                   <div className="p-3 bg-gray-800 rounded-lg">
-                    <div className="text-xs text-gray-400">Recent Transactions</div>
-                    <div className="text-sm mt-2">Loading transactions...</div>
-                  </div>
-                </div>
+  <div className="text-xs text-gray-400 mb-2">Recent Transactions</div>
+  {portfolioLoading ? (
+    <div className="flex justify-center p-4">
+      <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+      </svg>
+    </div>
+  ) : portfolioError ? (
+    <div className="text-red-400 text-sm p-2">{portfolioError}</div>
+  ) : transactions.length > 0 ? (
+    <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+      {transactions.map((tx, index) => (
+        <div key={index} className="text-xs p-2 bg-gray-700 rounded">
+          <div className="flex justify-between items-center">
+            <span className="font-medium text-gray-300">
+              {tx.signature ? (
+                <a 
+                  href={`https://solscan.io/tx/${tx.signature}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-mono hover:text-indigo-300 transition-colors"
+                >
+                  {tx.signature.slice(0, 8)}...{tx.signature.slice(-8)}
+                </a>
               ) : (
-                <div className="text-center text-gray-400">
-                  Please connect your wallet to view portfolio
+                <span className="italic text-gray-400">No signature</span>
+              )}
+            </span>
+            <span className={`text-xs px-1.5 py-0.5 rounded ${tx.successful ? 'bg-green-800 text-green-300' : 'bg-red-800 text-red-300'}`}>
+              {tx.successful ? 'Success' : 'Failed'}
+            </span>
+          </div>
+          
+          {tx.type && (
+            <div className="mt-1 text-indigo-300 text-xs">
+              {formatTransactionType(tx.type)}
+            </div>
+          )}
+          
+          <div className="mt-1 text-gray-400">
+            {formatDate(tx.blockTime)}
+          </div>
+          
+          {typeof tx.fee === 'number' && (
+            <div className="mt-1 text-gray-400">
+              Fee: {(tx.fee / 1000000000).toFixed(6)} SOL
+            </div>
+          )}
+          
+          {tx.source && (
+            <div className="mt-1 text-xs text-gray-500 italic">
+              Source: {tx.source}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  ) : (
+    <div className="text-sm text-center text-gray-400 p-2">No transactions found</div>
+  )}
+</div>
+                </>
+              ) : (
+                <div className="text-center text-gray-400 py-10">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-10 w-10 mb-4 text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                  </svg>
+                  <p className="mb-4">Please connect your wallet to view portfolio</p>
+                  <button
+                    onClick={login}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors"
+                  >
+                    Connect Wallet
+                  </button>
                 </div>
               )}
             </div>
@@ -233,11 +435,11 @@ export function ChatLayout({ children }: { children: React.ReactNode }) {
             </div>
           ) : (
             <button
-            onClick={login}
-            className="px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-800 transition-colors"
-          >
-            Connect Wallet
-          </button>
+              onClick={login}
+              className="w-full px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+            >
+              Connect Wallet
+            </button>
           )}
         </div>
       </div>

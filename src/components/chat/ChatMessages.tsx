@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // src/components/chat/ChatMessages.tsx
 'use client';
 
@@ -30,10 +31,31 @@ export const ChatMessages = () => {
             let result;
             switch (message.action) {
               case 'balance':
-                result = await getBalance();
+                // Get balance in SOL
+                const solBalance = await getBalance();
+                // Format the result to include both SOL value and source
+                result = {
+                  balance: solBalance,
+                  formatted: solBalance.toFixed(6),
+                  source: 'blockchain',
+                };
                 break;
               case 'transactions':
-                result = await getTransactions();
+                const txs = await getTransactions();
+                // Format transactions for display
+                result = {
+                  count: txs.length,
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  transactions: txs.map((tx: any) => ({
+                    signature: tx.signature,
+                    blockTime: tx.blockTime ? new Date(tx.blockTime * 1000).toLocaleString() : 'Unknown',
+                    type: tx.type || 'Transaction',
+                    fee: tx.fee ? `${(tx.fee / 1000000000).toFixed(6)} SOL` : 'Unknown',
+                    successful: tx.successful ? 'Success' : 'Failed',
+                    source: tx.source || 'Unknown'
+                  })),
+                  source: txs.length > 0 ? txs[0].source : 'Unknown'
+                };
                 break;
               default:
                 result = 'Action not supported';
@@ -42,7 +64,10 @@ export const ChatMessages = () => {
             updated = true;
           } catch (error) {
             console.error('Action failed:', error);
-            newResults[message.id] = 'Failed to execute action';
+            newResults[message.id] = {
+              error: true,
+              message: error instanceof Error ? error.message : 'Failed to execute action'
+            };
             updated = true;
           }
         }
@@ -55,6 +80,76 @@ export const ChatMessages = () => {
 
     executeActions();
   }, [messages, actionResults, getBalance, getTransactions]);
+
+  // Format content for display based on action type
+  const formatActionResult = (messageId: string, action: string) => {
+    const result = actionResults[messageId];
+    
+    if (!result) return null;
+    
+    if (result.error) {
+      return (
+        <div className="text-red-500">Error: {result.message}</div>
+      );
+    }
+    
+    switch (action) {
+      case 'balance':
+        return (
+          <div className="font-mono">
+            <div className="flex items-center">
+              <span className="text-lg font-semibold">{result.formatted}</span>
+              <span className="ml-2 text-sm opacity-70">SOL</span>
+            </div>
+          </div>
+        );
+        
+      case 'transactions':
+        return (
+          <div>
+            <div className="mb-2 text-sm font-semibold">Found {result.count} transactions</div>
+            <div className="space-y-2 max-h-60 overflow-y-auto">
+              {result.transactions.slice(0, 5).map((tx: any, index: number) => (
+                <div key={index} className="p-2 bg-black/10 dark:bg-white/5 rounded-md text-sm">
+                  <div className="flex justify-between">
+                    <a 
+                      href={`https://solscan.io/tx/${tx.signature}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-mono hover:underline text-xs overflow-hidden text-ellipsis"
+                    >
+                      {tx.signature.slice(0, 10)}...{tx.signature.slice(-10)}
+                    </a>
+                    <span className={`text-xs px-1 py-0.5 rounded ${tx.successful === 'Success' ? 'bg-green-600/20 text-green-500' : 'bg-red-600/20 text-red-500'}`}>
+                      {tx.successful}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-xs opacity-70 flex flex-wrap justify-between">
+                    <span>{tx.type}</span>
+                    <span>{tx.blockTime}</span>
+                  </div>
+                  <div className="mt-1 text-xs opacity-70">Fee: {tx.fee}</div>
+                </div>
+              ))}
+              {result.transactions.length > 5 && (
+                <div className="text-center text-xs italic mt-2">
+                  Showing 5 of {result.transactions.length} transactions
+                </div>
+              )}
+            </div>
+          </div>
+        );
+        
+      default:
+        return (
+          <div className="font-mono text-sm overflow-x-auto">
+            {typeof result === 'object' 
+              ? JSON.stringify(result, null, 2)
+              : result.toString()}
+          </div>
+        );
+    }
+  };
 
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50 dark:bg-gray-800">
@@ -82,14 +177,13 @@ export const ChatMessages = () => {
               <p className="whitespace-pre-wrap">{message.content}</p>
               {message.action && actionResults[message.id] && (
                 <div className="mt-3 p-3 bg-black/10 dark:bg-white/10 rounded-lg">
-                  <div className="text-xs font-semibold mb-1 opacity-70">
-                    {message.action.toUpperCase()} RESULT
+                  <div className="text-xs font-semibold mb-1 opacity-70 flex justify-between items-center">
+                    <span>{message.action.toUpperCase()} RESULT</span>
+                    {actionResults[message.id].source && (
+                      <span className="text-xs opacity-50">via {actionResults[message.id].source}</span>
+                    )}
                   </div>
-                  <div className="font-mono text-sm overflow-x-auto">
-                    {typeof actionResults[message.id] === 'object' 
-                      ? JSON.stringify(actionResults[message.id], null, 2)
-                      : actionResults[message.id].toString()}
-                  </div>
+                  {formatActionResult(message.id, message.action)}
                 </div>
               )}
             </div>
