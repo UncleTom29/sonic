@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { getFirestore } from 'firebase/firestore';
 import { collection, doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { initializeApp, getApps } from 'firebase/app';
+export const runtime = 'edge';
 
 const actionSchema = z.object({
   action: z.enum(['balance', 'transactions', 'network']),
