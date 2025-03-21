@@ -11,7 +11,7 @@ export function ChatLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false); // Start closed on mobile
   const [activeSection, setActiveSection] = useState<'chats' | 'account' | 'portfolio'>('chats');
   const { setMessages, clearMessages } = useAI();
-  const { user, logout } = usePrivy();
+  const { user, login, logout } = usePrivy();
   const { chats, deleteChat } = useChatHistory();
   const [isDarkMode, setIsDarkMode] = useState(false);
 
@@ -232,9 +232,12 @@ export function ChatLayout({ children }: { children: React.ReactNode }) {
               </div>
             </div>
           ) : (
-            <div className="text-center text-gray-400 text-sm">
-              Not connected
-            </div>
+            <button
+            onClick={login}
+            className="px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-800 transition-colors"
+          >
+            Connect Wallet
+          </button>
           )}
         </div>
       </div>
