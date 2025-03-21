@@ -1,7 +1,7 @@
 // src/components/chat/ChatMessages.tsx
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useBlockchain } from '@/app/hooks/useBlockchain';
 import { useAI } from '@/app/providers/AIProvider';
 import { ExtendedMessage } from '@/app/types/message';
@@ -10,26 +10,51 @@ export const ChatMessages = () => {
   const { messages } = useAI();
   const { getBalance, getTransactions } = useBlockchain();
   const endRef = useRef<HTMLDivElement>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [actionResults, setActionResults] = useState<Record<string, any>>({});
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const executeAction = async (action: string) => {
-    try {
-      switch (action) {
-        case 'balance':
-          return await getBalance();
-        case 'transactions':
-          return await getTransactions();
-        default:
-          return 'Action not supported';
+  // Execute actions when messages change
+  useEffect(() => {
+    const executeActions = async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const newResults: Record<string, any> = { ...actionResults };
+      let updated = false;
+
+      for (const message of messages) {
+        if (message.action && !actionResults[message.id]) {
+          try {
+            let result;
+            switch (message.action) {
+              case 'balance':
+                result = await getBalance();
+                break;
+              case 'transactions':
+                result = await getTransactions();
+                break;
+              default:
+                result = 'Action not supported';
+            }
+            newResults[message.id] = result;
+            updated = true;
+          } catch (error) {
+            console.error('Action failed:', error);
+            newResults[message.id] = 'Failed to execute action';
+            updated = true;
+          }
+        }
       }
-    } catch (error) {
-      console.error('Action failed:', error);
-      return 'Failed to execute action';
-    }
-  };
+
+      if (updated) {
+        setActionResults(newResults);
+      }
+    };
+
+    executeActions();
+  }, [messages, actionResults, getBalance, getTransactions]);
 
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50 dark:bg-gray-800">
@@ -41,7 +66,7 @@ export const ChatMessages = () => {
             </svg>
           </div>
           <h2 className="text-2xl font-bold text-gray-700 dark:text-gray-200 mb-2">Welcome to SonicHub</h2>
-          <p className="text-gray-500 dark:text-gray-400 max-w-md">Ask about your wallet balance, check transactions, or explore the Solana network.</p>
+          <p className="text-gray-500 dark:text-gray-400 max-w-md">Ask about your wallet balance, check transactions, or explore the Sonic SVM and Solana network.</p>
         </div>
       ) : (
         messages?.map((message: ExtendedMessage) => (
@@ -55,13 +80,15 @@ export const ChatMessages = () => {
                 : 'bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 shadow-md text-gray-800 dark:text-gray-100'
             }`}>
               <p className="whitespace-pre-wrap">{message.content}</p>
-              {message.action && (
+              {message.action && actionResults[message.id] && (
                 <div className="mt-3 p-3 bg-black/10 dark:bg-white/10 rounded-lg">
                   <div className="text-xs font-semibold mb-1 opacity-70">
                     {message.action.toUpperCase()} RESULT
                   </div>
                   <div className="font-mono text-sm overflow-x-auto">
-                    {JSON.stringify(executeAction(message.action), null, 2)}
+                    {typeof actionResults[message.id] === 'object' 
+                      ? JSON.stringify(actionResults[message.id], null, 2)
+                      : actionResults[message.id].toString()}
                   </div>
                 </div>
               )}

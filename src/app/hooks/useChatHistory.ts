@@ -56,12 +56,13 @@ export function useChatHistory() {
     }
 
     try {
-      // Sanitize messages to avoid undefined values
+      // Sanitize messages to ensure no undefined values
       const sanitizedMessages = messages.map(msg => ({
         id: msg.id || Date.now().toString(),
         content: msg.content || '',
         role: msg.role || 'user',
-        action: msg.action
+        // Only include action if it exists
+        ...(msg.action ? { action: msg.action } : {})
       }));
       
       const chatRef = doc(collection(db, 'users', user.id, 'chats'));

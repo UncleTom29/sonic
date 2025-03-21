@@ -44,7 +44,7 @@ export async function POST(req: Request) {
   try {
     const { partialObjectStream } = await streamObject({
       model: model === 'google' 
-        ? google('models/gemini-2.0-flash-exp') 
+        ? google('gemini-1.5-pro') 
         : deepseek('deepseek-chat'),
       schema: actionSchema,
       system: `Analyze user requests and output JSON with:
