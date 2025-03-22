@@ -54,16 +54,37 @@ export function useChatHistory() {
     if (!authenticated || !user?.id || !messages || messages.length === 0) {
       return;
     }
-
+  
     try {
-      // Sanitize messages to ensure no undefined values
-      const sanitizedMessages = messages.map(msg => ({
-        id: msg.id || Date.now().toString(),
-        content: msg.content || '',
-        role: msg.role || 'user',
-        // Only include action if it exists
-        ...(msg.action ? { action: msg.action } : {})
-      }));
+      // Deep sanitize messages to ensure they're Firestore-compatible
+      const sanitizedMessages = messages.map(msg => {
+        // Start with basic fields
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const sanitized: any = {
+          id: msg.id || Date.now().toString(),
+          content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content),
+          role: msg.role || 'user',
+        };
+        
+        // Only add action if it exists and is a simple type
+        if (msg.action && typeof msg.action === 'string') {
+          sanitized.action = msg.action;
+        }
+        
+        // Convert any other fields that might be present to strings if they're objects
+        Object.keys(msg).forEach(key => {
+          if (!['id', 'content', 'role', 'action'].includes(key)) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const value = (msg as any)[key];
+            if (value !== undefined && value !== null) {
+              // Convert objects to strings, but keep primitive types as is
+              sanitized[key] = typeof value === 'object' ? JSON.stringify(value) : value;
+            }
+          }
+        });
+        
+        return sanitized;
+      });
       
       const chatRef = doc(collection(db, 'users', user.id, 'chats'));
       await setDoc(chatRef, {
@@ -71,8 +92,6 @@ export function useChatHistory() {
         createdAt: serverTimestamp()
       });
       
-      // Don't call loadChatHistory here to prevent duplicates
-      // Let the component that needs fresh data call it
     } catch (error) {
       console.error('Error saving chat:', error);
     }

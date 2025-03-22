@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-unused-vars */
 // src/app/hooks/useBlockchain.ts
 import { usePrivy } from '@privy-io/react-auth';
 import { useState, useRef } from 'react';
@@ -9,22 +11,15 @@ const shyft = new ShyftSdk({
   network: Network.Mainnet 
 });
 
-// Add debounce function
-// const debounce = (func: Function, wait: number) => {
-//   let timeout: NodeJS.Timeout | null = null;
-  
-//   return function executedFunction(...args: any[]) {
-//     const later = () => {
-//       timeout = null;
-//       func(...args);
-//     };
-    
-//     if (timeout) {
-//       clearTimeout(timeout);
-//     }
-//     timeout = setTimeout(later, wait);
-//   };
-// };
+
+export interface BlockchainParams {
+  limit?: number;
+  network?: string;
+  detail?: string;
+  timeframe?: string;
+  type?: string;
+  sort?: 'asc' | 'desc';
+}
 
 export const useBlockchain = () => {
   const { user } = usePrivy();
@@ -34,13 +29,14 @@ export const useBlockchain = () => {
   // Add state to track last API call time
   const lastCallTimeRef = useRef<Record<string, number>>({
     balance: 0,
-    transactions: 0
+    transactions: 0,
+    network: 0
   });
   
   // API rate limit constants (milliseconds)
-  const API_RATE_LIMIT = 10000; // 5 seconds between calls
+  const API_RATE_LIMIT = 10000; // 10 seconds between calls
 
-  const checkRateLimit = (operation: 'balance' | 'transactions'): boolean => {
+  const checkRateLimit = (operation: 'balance' | 'transactions' | 'network'): boolean => {
     const now = Date.now();
     const lastCall = lastCallTimeRef.current[operation];
     
@@ -65,53 +61,63 @@ export const useBlockchain = () => {
     setError(null);
     
     try {
-         // Try Moralis first
-         const moralisResponse = await fetch(
-          `https://solana-gateway.moralis.io/account/mainnet/${user.wallet.address}/balance`,
-          {
-            headers: {
-              'accept': 'application/json',
-              'X-API-Key': process.env.NEXT_PUBLIC_MORALIS_API_KEY!
-            }
-          }
-        );
-  
-        if (moralisResponse.ok) {
-          const data = await moralisResponse.json();
-          // Handle the specific Moralis response format
-          if (data.solana) {
-            return parseFloat(data.solana);
-          }
-          if (data.lamports) {
-            return parseFloat(data.lamports) / LAMPORTS_PER_SOL;
+      // Try Moralis first
+      const moralisResponse = await fetch(
+        `https://solana-gateway.moralis.io/account/mainnet/${user.wallet.address}/balance`,
+        {
+          headers: {
+            'accept': 'application/json',
+            'X-API-Key': process.env.NEXT_PUBLIC_MORALIS_API_KEY!
           }
         }
-  
+      );
+
+      if (moralisResponse.ok) {
+        const data = await moralisResponse.json();
+        // Handle the specific Moralis response format
+        if (data.solana) {
+          return {
+            balance: parseFloat(data.solana),
+            source: 'moralis'
+          };
+        }
+        if (data.lamports) {
+          return {
+            balance: parseFloat(data.lamports) / LAMPORTS_PER_SOL,
+            source: 'moralis'
+          };
+        }
+      }
 
       // Fallback to Shyft if Moralis fails
       const shyftBalance = await shyft.wallet.getBalance({ 
         wallet: user.wallet.address 
       });
-      return shyftBalance / LAMPORTS_PER_SOL;
+      return {
+        balance: shyftBalance / LAMPORTS_PER_SOL,
+        source: 'shyft'
+      };
 
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (err) {
       // Final fallback to direct RPC
       try {
         const connection = new Connection(process.env.NEXT_PUBLIC_SOLANA_RPC_URL!);
         const balance = await connection.getBalance(new PublicKey(user.wallet.address));
-        return balance / LAMPORTS_PER_SOL;
+        return {
+          balance: balance / LAMPORTS_PER_SOL,
+          source: 'rpc'
+        };
       } catch (finalErr) {
         setError('Failed to fetch balance');
         console.error(finalErr);
-        return 0;
+        throw new Error('Failed to fetch balance from all available sources');
       }
     } finally {
       setIsLoading(false);
     }
   };
 
-  const getTransactions = async (limit = 10) => {
+  const getTransactions = async (params: BlockchainParams = {}) => {
     if (!user?.wallet?.address) throw new Error('Wallet not connected');
     
     // Check rate limit
@@ -122,25 +128,83 @@ export const useBlockchain = () => {
     setIsLoading(true);
     setError(null);
     
+    const { 
+      limit = 10,
+      type,
+      timeframe,
+      sort = 'desc'
+    } = params;
+    
     try {
       // Try Helius first
       try {
-        const heliusResponse = await fetch(
-          `https://api.helius.xyz/v0/addresses/${user.wallet.address}/transactions?api-key=${process.env.NEXT_PUBLIC_HELIUS_API_KEY}&limit=${limit}`
-        );
+        let heliusUrl = `https://api.helius.xyz/v0/addresses/${user.wallet.address}/transactions?api-key=${process.env.NEXT_PUBLIC_HELIUS_API_KEY}&limit=${limit}`;
+        
+        // Add additional params if provided
+        if (sort) {
+          heliusUrl += `&order=${sort}`;
+        }
+        
+        const heliusResponse = await fetch(heliusUrl);
 
         if (heliusResponse.ok) {
-          const heliusTxs = await heliusResponse.json();
+          let heliusTxs = await heliusResponse.json();
+          
+          // Filter by type if specified
+          if (type && type !== 'all') {
+            heliusTxs = heliusTxs.filter((tx: any) => 
+              tx.type?.toLowerCase().includes(type.toLowerCase())
+            );
+          }
+          
+          // Filter by timeframe if specified
+          if (timeframe) {
+            const now = Date.now();
+            let timeFilter: number;
+            
+            // Parse timeframe (last day, week, month)
+            switch(timeframe.toLowerCase()) {
+              case 'day':
+              case 'today':
+              case 'yesterday':
+                timeFilter = now - (24 * 60 * 60 * 1000);
+                break;
+              case 'week':
+                timeFilter = now - (7 * 24 * 60 * 60 * 1000);
+                break;
+              case 'month':
+                timeFilter = now - (30 * 24 * 60 * 60 * 1000);
+                break;
+              default:
+                // Try to parse as number of days
+                const days = parseInt(timeframe);
+                if (!isNaN(days)) {
+                  timeFilter = now - (days * 24 * 60 * 60 * 1000);
+                } else {
+                  timeFilter = 0; // No filtering
+                }
+            }
+            
+            if (timeFilter > 0) {
+              heliusTxs = heliusTxs.filter((tx: any) => 
+                tx.timestamp && tx.timestamp >= timeFilter
+              );
+            }
+          }
+          
           // Standardize the Helius response format
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          return heliusTxs.map((tx: any) => ({
-            signature: tx.signature,
-            blockTime: tx.timestamp ? tx.timestamp / 1000 : undefined, // Convert ms to seconds if timestamp exists
-            fee: tx.fee,
-            successful: !tx.err,
-            type: tx.type || 'unknown',
+          return {
+            transactions: heliusTxs.map((tx: any) => ({
+              signature: tx.signature,
+              blockTime: tx.timestamp ? tx.timestamp / 1000 : undefined, // Convert ms to seconds if timestamp exists
+              fee: tx.fee,
+              successful: !tx.err,
+              type: tx.type || 'unknown',
+              source: 'helius'
+            })),
+            count: heliusTxs.length,
             source: 'helius'
-          }));
+          };
         }
       } catch (heliusError) {
         console.error('Helius API error:', heliusError);
@@ -149,23 +213,79 @@ export const useBlockchain = () => {
 
       // Try Shyft next
       try {
-        const shyftTransactions = await shyft.wallet.parsedTransactionHistory({
+        const shyftParams: any = {
           wallet: user.wallet.address,
           limit,
           network: Network.Mainnet
-        });
-
+        };
+        
+        // Add sort parameter
+        if (sort) {
+          shyftParams.sortOrder = sort.toUpperCase();
+        }
+        
+        const shyftTransactions = await shyft.wallet.parsedTransactionHistory(shyftParams);
+        
         if (shyftTransactions.length > 0) {
+          // Filter transactions if needed
+          let filteredTxs = [...shyftTransactions];
+          
+          // Filter by type if specified
+          if (type && type !== 'all') {
+            filteredTxs = filteredTxs.filter((tx: any) => 
+              tx.type?.toLowerCase().includes(type.toLowerCase())
+            );
+          }
+          
+          // Filter by timeframe if specified
+          if (timeframe) {
+            const now = Date.now();
+            let timeFilter: number;
+            
+            // Parse timeframe
+            switch(timeframe.toLowerCase()) {
+              case 'day':
+              case 'today':
+              case 'yesterday':
+                timeFilter = now - (24 * 60 * 60 * 1000);
+                break;
+              case 'week':
+                timeFilter = now - (7 * 24 * 60 * 60 * 1000);
+                break;
+              case 'month':
+                timeFilter = now - (30 * 24 * 60 * 60 * 1000);
+                break;
+              default:
+                // Try to parse as number of days
+                const days = parseInt(timeframe);
+                if (!isNaN(days)) {
+                  timeFilter = now - (days * 24 * 60 * 60 * 1000);
+                } else {
+                  timeFilter = 0; // No filtering
+                }
+            }
+            
+            if (timeFilter > 0) {
+              filteredTxs = filteredTxs.filter((tx: any) => {
+                const txTime = tx.timestamp ? new Date(tx.timestamp).getTime() : 0;
+                return txTime >= timeFilter;
+              });
+            }
+          }
+          
           // Standardize the Shyft response format
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          return shyftTransactions.map((tx: any) => ({
-            signature: tx.signature,
-            blockTime: tx.timestamp ? tx.timestamp / 1000 : undefined,
-            fee: tx.fee,
-            successful: tx.status === 'success',
-            type: tx.type || 'unknown',
+          return {
+            transactions: filteredTxs.map((tx: any) => ({
+              signature: tx.signature,
+              blockTime: tx.timestamp ? new Date(tx.timestamp).getTime() / 1000 : undefined,
+              fee: tx.fee,
+              successful: tx.status === 'success',
+              type: tx.type || 'unknown',
+              source: 'shyft'
+            })),
+            count: filteredTxs.length,
             source: 'shyft'
-          }));
+          };
         }
       } catch (shyftError) {
         console.error('Shyft API error:', shyftError);
@@ -178,6 +298,11 @@ export const useBlockchain = () => {
         new PublicKey(user.wallet.address),
         { limit }
       );
+      
+      // Apply sort if specified and supported
+      if (sort === 'asc') {
+        signatures.reverse();
+      }
 
       const transactions = await Promise.all(
         signatures.map(async (sig) => {
@@ -204,12 +329,59 @@ export const useBlockchain = () => {
         })
       );
 
-      return transactions;
+      return {
+        transactions,
+        count: transactions.length,
+        source: 'rpc'
+      };
 
     } catch (err) {
       setError('Failed to fetch transactions');
       console.error('Transaction fetch error:', err);
-      return [];
+      throw new Error('Failed to fetch transactions from all available sources');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  const getNetworkStatus = async () => {
+    if (!checkRateLimit('network')) {
+      throw new Error('Please wait before making another request');
+    }
+    
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      const connection = new Connection(process.env.NEXT_PUBLIC_SOLANA_RPC_URL!);
+      
+      // Get cluster version
+      const version = await connection.getVersion();
+      
+      // Get recent performance samples
+      const perfSamples = await connection.getRecentPerformanceSamples(5);
+      
+      // Calculate average TPS
+      const avgTps = perfSamples.length > 0 
+        ? perfSamples.reduce((sum, sample) => sum + sample.numTransactions / sample.samplePeriodSecs, 0) / perfSamples.length
+        : 0;
+      
+      // Get latest block
+      const slot = await connection.getSlot();
+      const blockTime = await connection.getBlockTime(slot);
+      
+      return {
+        status: 'online',
+        version: version['solana-core'],
+        currentSlot: slot,
+        avgTps: avgTps.toFixed(2),
+        latestBlockTime: blockTime ? new Date(blockTime * 1000).toISOString() : null,
+        source: 'rpc'
+      };
+    } catch (err) {
+      setError('Failed to fetch network status');
+      console.error('Network status fetch error:', err);
+      throw new Error('Failed to fetch network status');
     } finally {
       setIsLoading(false);
     }
@@ -217,7 +389,8 @@ export const useBlockchain = () => {
 
   return { 
     getBalance, 
-    getTransactions, 
+    getTransactions,
+    getNetworkStatus,
     isLoading,
     error
   };

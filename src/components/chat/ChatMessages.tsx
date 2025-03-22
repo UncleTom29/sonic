@@ -3,20 +3,21 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { useBlockchain } from '@/app/hooks/useBlockchain';
+import { useBlockchain, BlockchainParams } from '@/app/hooks/useBlockchain';
 import { useAI } from '@/app/providers/AIProvider';
 import { ExtendedMessage } from '@/app/types/message';
 
 export const ChatMessages = () => {
   const { messages } = useAI();
-  const { getBalance, getTransactions } = useBlockchain();
+  const { getBalance, getTransactions, getNetworkStatus } = useBlockchain();
   const endRef = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [actionResults, setActionResults] = useState<Record<string, any>>({});
+  const [pendingActions, setPendingActions] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, actionResults]);
 
   // Execute actions when messages change
   useEffect(() => {
@@ -24,29 +25,46 @@ export const ChatMessages = () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const newResults: Record<string, any> = { ...actionResults };
       let updated = false;
+      const newPendingActions = new Set(pendingActions);
 
       for (const message of messages) {
-        if (message.action && !actionResults[message.id]) {
+        // Skip 'none' actions as they don't need blockchain operations
+        if (message.action === 'none') {
+          if (!actionResults[message.id]) {
+            newResults[message.id] = { none: true };  // Mark as processed
+            updated = true;
+          }
+          continue;
+        }
+        
+        if (message.action && !actionResults[message.id] && !pendingActions.has(message.id)) {
+          newPendingActions.add(message.id);
+          setPendingActions(newPendingActions);
+          
           try {
             let result;
+            // Parse params from the message
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const params: BlockchainParams = (message as any).params || {};
+            
             switch (message.action) {
               case 'balance':
                 // Get balance in SOL
-                const solBalance = await getBalance();
-                // Format the result to include both SOL value and source
+                const balanceData = await getBalance();
+                // Format the result
                 result = {
-                  balance: solBalance,
-                  formatted: solBalance.toFixed(6),
-                  source: 'blockchain',
+                  balance: balanceData.balance,
+                  formatted: balanceData.balance.toFixed(6),
+                  source: balanceData.source,
                 };
                 break;
+                
               case 'transactions':
-                const txs = await getTransactions();
+                const txData = await getTransactions(params);
                 // Format transactions for display
                 result = {
-                  count: txs.length,
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  transactions: txs.map((tx: any) => ({
+                  count: txData.count,
+                  transactions: txData.transactions.map((tx: any) => ({
                     signature: tx.signature,
                     blockTime: tx.blockTime ? new Date(tx.blockTime * 1000).toLocaleString() : 'Unknown',
                     type: tx.type || 'Transaction',
@@ -54,14 +72,46 @@ export const ChatMessages = () => {
                     successful: tx.successful ? 'Success' : 'Failed',
                     source: tx.source || 'Unknown'
                   })),
-                  source: txs.length > 0 ? txs[0].source : 'Unknown'
+                  source: txData.source
                 };
                 break;
+                
+              case 'network':
+                const networkData = await getNetworkStatus();
+                result = {
+                  ...networkData
+                };
+                break;
+                
+              case 'help':
+                result = {
+                  help: true,
+                  topics: [
+                    {
+                      title: "Checking Balance",
+                      description: "Ask about your SOL balance with questions like 'What's my balance?' or 'How much SOL do I have?'"
+                    },
+                    {
+                      title: "Viewing Transactions",
+                      description: "View your transaction history with questions like 'Show my recent transactions' or 'What did I spend yesterday?'"
+                    },
+                    {
+                      title: "Network Status",
+                      description: "Check Solana network status with questions like 'Is Solana running well?' or 'What's the current TPS?'"
+                    }
+                  ]
+                };
+                break;
+                
               default:
-                result = 'Action not supported';
+                result = null;
             }
-            newResults[message.id] = result;
-            updated = true;
+            
+            if (result) {
+              newResults[message.id] = result;
+              updated = true;
+            }
+            
           } catch (error) {
             console.error('Action failed:', error);
             newResults[message.id] = {
@@ -69,6 +119,8 @@ export const ChatMessages = () => {
               message: error instanceof Error ? error.message : 'Failed to execute action'
             };
             updated = true;
+          } finally {
+            newPendingActions.delete(message.id);
           }
         }
       }
@@ -76,16 +128,35 @@ export const ChatMessages = () => {
       if (updated) {
         setActionResults(newResults);
       }
+      
+      if (newPendingActions.size !== pendingActions.size) {
+        setPendingActions(newPendingActions);
+      }
     };
 
     executeActions();
-  }, [messages, actionResults, getBalance, getTransactions]);
+  }, [messages, actionResults, pendingActions, getBalance, getTransactions, getNetworkStatus]);
 
   // Format content for display based on action type
   const formatActionResult = (messageId: string, action: string) => {
+    // If action is 'none', don't display any special result UI
+    if (action === 'none') {
+      return null;
+    }
+    
     const result = actionResults[messageId];
     
-    if (!result) return null;
+    if (!result) {
+      if (pendingActions.has(messageId)) {
+        return (
+          <div className="flex items-center space-x-2 text-sm">
+            <div className="animate-spin h-4 w-4 border-t-2 border-blue-500 rounded-full"></div>
+            <span>Loading data...</span>
+          </div>
+        );
+      }
+      return null;
+    }
     
     if (result.error) {
       return (
@@ -140,14 +211,44 @@ export const ChatMessages = () => {
           </div>
         );
         
-      default:
+      case 'network':
         return (
-          <div className="font-mono text-sm overflow-x-auto">
-            {typeof result === 'object' 
-              ? JSON.stringify(result, null, 2)
-              : result.toString()}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="font-medium">Status:</span> 
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                {result.status}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="font-medium">Version:</span> 
+              <span className="text-sm">{result.version}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="font-medium">Current TPS:</span> 
+              <span className="text-sm">{result.avgTps} tx/sec</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="font-medium">Current Slot:</span> 
+              <span className="text-sm">{result.currentSlot}</span>
+            </div>
           </div>
         );
+        
+      case 'help':
+        return (
+          <div className="space-y-3">
+            {result.topics.map((topic: any, i: number) => (
+              <div key={i} className="border-l-2 border-indigo-500 pl-3">
+                <h4 className="font-medium">{topic.title}</h4>
+                <p className="text-xs opacity-80">{topic.description}</p>
+              </div>
+            ))}
+          </div>
+        );
+        
+      default:
+        return null;
     }
   };
 
@@ -175,7 +276,7 @@ export const ChatMessages = () => {
                 : 'bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 shadow-md text-gray-800 dark:text-gray-100'
             }`}>
               <p className="whitespace-pre-wrap">{message.content}</p>
-              {message.action && actionResults[message.id] && (
+              {message.action && message.action !== 'none' && actionResults[message.id] && (
                 <div className="mt-3 p-3 bg-black/10 dark:bg-white/10 rounded-lg">
                   <div className="text-xs font-semibold mb-1 opacity-70 flex justify-between items-center">
                     <span>{message.action.toUpperCase()} RESULT</span>

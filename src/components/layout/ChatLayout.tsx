@@ -52,7 +52,7 @@ export function ChatLayout({ children }: { children: React.ReactNode }) {
           setBalance(typeof balanceData === 'number' ? balanceData : null);
           
           // Get transactions
-          const txData = await getTransactions(5); // Limit to 5 recent transactions
+          const txData = await getTransactions(); // Limit to 5 recent transactions
           setTransactions(Array.isArray(txData) ? txData : []);
         } catch (err) {
           console.error('Portfolio data loading error:', err);
@@ -157,7 +157,7 @@ const refreshPortfolio = async () => {
     const balanceData = await getBalance();
     setBalance(typeof balanceData === 'number' ? balanceData : null);
     
-    const txData = await getTransactions(5);
+    const txData = await getTransactions();
     setTransactions(Array.isArray(txData) ? txData : []);
   } catch (err) {
     console.error('Portfolio refresh error:', err);

@@ -90,11 +90,20 @@ export function ChatInput() {
                   const lastMessage = updatedMessages[updatedMessages.length - 1];
                   
                   if (lastMessage.role === 'assistant') {
-                    updatedMessages[updatedMessages.length - 1] = {
+                    // Make sure content is always a string
+                    const contentString = typeof data.content === 'object' 
+                      ? JSON.stringify(data.content) 
+                      : String(data.content || lastMessage.content);
+                    
+                    // Ensure we have valid content and action fields
+                    const updatedMessage = {
                       ...lastMessage,
-                      content: data.content || lastMessage.content,
-                      action: data.action
+                      content: contentString,
+                      action: data.action !== undefined ? data.action : lastMessage.action,
+                      // params: data.params !== undefined ? data.params : lastMessage.params
                     };
+                    
+                    updatedMessages[updatedMessages.length - 1] = updatedMessage;
                   }
                   
                   return updatedMessages;
