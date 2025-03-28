@@ -14,8 +14,7 @@
   "dependencies": {
     "@ai-sdk/deepseek": "^0.1.15",
     "@ai-sdk/google": "^1.1.25",
-    "@privy-io/react-auth": "^2.6.2",
-    "@sendaifun/sonic-agent-kit": "^1.0.0",
+    "@privy-io/react-auth": "^2.7.0",
     "@shyft-to/js": "^0.2.40",
     "ai": "^4.1.61",
     "firebase": "^11.4.0",
@@ -23,8 +22,6 @@
     "next": "15.2.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "solana-agent-kit": "^1.4.9",
-    "sonic-agent-kit": "^1.0.42",
     "swr": "^2.3.3"
   },
   "devDependencies": {
