@@ -37,7 +37,7 @@ export function PrivyProvider({ children }: PrivyProviderProps) {
         embeddedWallets: {
           createOnLogin: 'users-without-wallets',
         },
-        solanaClusters: [{name: 'mainnet-beta', rpcUrl: 'https://api.mainnet-alpha.sonic.game'}],
+        solanaClusters: [{name: 'mainnet-beta', rpcUrl: 'https://api.mainnet-beta.solana.com'}],
       }}
     >
       {children}
